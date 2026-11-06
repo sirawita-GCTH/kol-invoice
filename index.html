@@ -202,7 +202,10 @@ textarea{resize:vertical;min-height:64px}
           <label class="f">สาขา<input type="text" data-f="client.branch"></label>
         </div>
         <label class="f">ที่อยู่<textarea data-f="client.address" rows="2"></textarea></label>
-        <label class="f">ผู้ติดต่อ<input type="text" data-f="client.contact"></label>
+        <div class="row2">
+          <label class="f">โทรศัพท์<input type="tel" data-f="client.phone"></label>
+          <label class="f">ผู้ติดต่อ<input type="text" data-f="client.contact" placeholder="เช่น ชื่อผู้ดูแลแคมเปญ"></label>
+        </div>
       </fieldset>
 
       <fieldset>
@@ -292,9 +295,18 @@ textarea{resize:vertical;min-height:64px}
 <script>
 /* ===== ตั้งค่าการเชื่อมต่อ (แก้ 3 บรรทัดนี้) ===== */
 const CONFIG={
-  SHEET_URL:'',          // ลิงก์ Web app จาก Google Apps Script (ลงท้ายด้วย /exec)
-  API_KEY:'',            // รหัสเดียวกับที่ตั้งใน Code.gs
-  AGENCY_NAME:'ผู้ว่าจ้าง' // ชื่อบริษัทของคุณ ใช้ในข้อความขอความยินยอม
+  SHEET_URL:'https://script.google.com/macros/s/AKfycbyw9FNbLvAcXJr_phvAqjj8tat09zr6rEPwmxbqcTvyawGOHWlSpGqsnB6mMybKljJh/exec',
+  API_KEY:'GCTH2026',
+  AGENCY_NAME:'Gushcloud (Thailand)',
+  // ข้อมูลลูกค้าที่เติมให้อัตโนมัติในเอกสารใหม่ทุกใบ
+  CLIENT:{
+    name:'บริษัท กัชคลาวด์ (ประเทศไทย) จำกัด',
+    taxId:'0105559067686',
+    branch:'สำนักงานใหญ่',
+    address:'เลขที่ 148 ซอยสุขุมวิท 20 แขวงคลองเตย เขตคลองเตย กรุงเทพมหานคร 10110',
+    phone:'02-0868148',
+    contact:''
+  }
 };
 /* ================================================ */
 (function(){
@@ -372,7 +384,7 @@ const docNo=d=>d.saved?d.no:nextNo(d.type,d.date);
 function newDoc(type){
   const t=today();
   return {id:uid(),type,no:'',saved:false,date:t,dueDate:addDays(t,30),ref:'',
-    client:{name:'',taxId:'',branch:'สำนักงานใหญ่',address:'',contact:''},
+    client:{...CONFIG.CLIENT},
     items:[{desc:'',qty:1,price:''}],wht:true,notes:'',
     status:type==='QT'?'open':'unpaid',fromId:null,convertedTo:null};
 }
@@ -458,7 +470,7 @@ function renderPreview(){
     <div class="p-cname">${c.name?esc(c.name):'<span class="p-ph">ชื่อลูกค้า</span>'}</div>
     ${c.address?`<div>${br(c.address)}</div>`:''}
     ${c.taxId?`<div>เลขประจำตัวผู้เสียภาษี ${esc(c.taxId)}${c.branch?`&emsp;สาขา ${esc(c.branch)}`:''}</div>`:''}
-    ${c.contact?`<div>ผู้ติดต่อ ${esc(c.contact)}</div>`:''}
+    ${c.phone||c.contact?`<div>${[c.phone&&`โทร ${esc(c.phone)}`,c.contact&&`ผู้ติดต่อ ${esc(c.contact)}`].filter(Boolean).join('&emsp;')}</div>`:''}
   </section>
   <table class="p-items">
     <thead><tr><th class="c">ลำดับ</th><th>รายการ</th><th class="r">จำนวน</th><th class="r">ราคาต่อหน่วย</th><th class="r">จำนวนเงิน</th></tr></thead>
