@@ -391,13 +391,15 @@ function persist(){
 }
 
 /* ---------- เอกสาร ---------- */
-function nextNo(type,iso){
-  const ym=(iso||today()).slice(0,7).replace('-','');
-  const pre=`${type}-${ym}-`;let max=0;
-  db.docs.forEach(d=>{if(d.no&&d.no.startsWith(pre)){const k=parseInt(d.no.slice(pre.length),10);if(k>max)max=k;}});
-  return pre+String(max+1).padStart(3,'0');
+// รูปแบบเลข: ประเภท-ปีเดือนวันปัจจุบัน-ลำดับ เช่น INV-20261106-001 (ลำดับเริ่ม 001 ใหม่ทุกเดือน)
+// เมื่อเชื่อมต่อระบบแล้ว Google Sheet จะเป็นผู้ออกเลข ใช้ฟังก์ชันนี้เฉพาะตอนไม่ได้เชื่อมต่อ
+function nextNo(type){
+  const ymd=today().replace(/-/g,''), ym=ymd.slice(0,6);
+  let max=0;
+  db.docs.forEach(d=>{const m=/^([A-Z]+)-(\d{6})\d{2}-(\d+)$/.exec(d.no||'');if(m&&m[1]===type&&m[2]===ym)max=Math.max(max,+m[3]);});
+  return `${type}-${ymd}-${String(max+1).padStart(3,'0')}`;
 }
-const docNo=d=>d.saved?d.no:nextNo(d.type,d.date);
+const docNo=d=>d.saved?d.no:(online()?'ร่าง':nextNo(d.type));
 function newDoc(type){
   const t=today();
   return {id:uid(),type,no:'',saved:false,date:t,dueDate:addDays(t,30),ref:'',
@@ -430,7 +432,7 @@ function updateGrossUI(){
   $('#grossUpRow').style.opacity=cur.wht?'':'0.5';
 }
 function updateMeta(){
-  $('#docNo').textContent=docNo(cur)+(cur.saved?'':' (ร่าง)');
+  $('#docNo').textContent=cur.saved?cur.no:(online()?'ได้เลขอัตโนมัติเมื่อกดบันทึก':nextNo(cur.type)+' (ร่าง)');
   $('#dueLabel').textContent=cur.type==='QT'?'ยืนราคาถึง':'ครบกำหนดชำระ';
   $$('#typeSeg button').forEach(b=>{b.setAttribute('aria-pressed',String(b.dataset.type===cur.type));b.disabled=cur.saved;});
   $('#typeLock').hidden=!cur.saved;
@@ -680,8 +682,22 @@ function renderAttach(){
 }
 
 /* ---------- การทำงาน ---------- */
-function save(){
-  if(!cur.saved){cur.no=nextNo(cur.type,cur.date);cur.saved=true;cur.createdAt=new Date().toISOString();}
+let saving=false;
+async function save(){
+  if(saving)return false;
+  if(!cur.saved){
+    if(online()){
+      if(!db.profile.taxId){toast('กรอกเลขประจำตัวผู้เสียภาษีในแท็บข้อมูลของฉันก่อนบันทึก');showTab('profile');return false;}
+      saving=true;const btn=$('#btnSave');btn.disabled=true;btn.textContent='กำลังออกเลข…';
+      try{
+        const j=await api({action:'reserveNo',type:cur.type,profile:profileForSync()});
+        cur.no=j.no;
+      }catch(e){
+        toast('ออกเลขเอกสารไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วกดบันทึกอีกครั้ง');return false;
+      }finally{saving=false;btn.disabled=false;btn.textContent='บันทึก';}
+    }else cur.no=nextNo(cur.type);
+    cur.saved=true;cur.createdAt=new Date().toISOString();
+  }
   cur.updatedAt=new Date().toISOString();
   const idx=db.docs.findIndex(d=>d.id===cur.id);
   if(idx>=0)db.docs[idx]=clone(cur);else db.docs.unshift(clone(cur));
@@ -692,6 +708,7 @@ function save(){
   setDirty(false);updateMeta();renderClientList();renderHistory();renderPreview();
   toast(ok?`บันทึก ${cur.no} แล้ว`:`บันทึก ${cur.no} ไว้ชั่วคราว ข้อมูลจะหายเมื่อปิดหน้า`);
   if(online()){syncDoc(stored);if(fromQ)syncDoc(fromQ,{quiet:true});}
+  return true;
 }
 function openDoc(id){
   const d=db.docs.find(x=>x.id===id);if(!d||!confirmLeave())return;
@@ -720,8 +737,8 @@ function del(id){
   if(cur.id===id){cur=newDoc('QT');setDirty(false);fillForm();}
   renderHistory();toast(`ลบ ${d.no} แล้ว`);
 }
-function doPrint(){
-  if(!cur.saved&&confirm('บันทึกเอกสารก่อนพิมพ์ เพื่อจองเลขที่เอกสารหรือไม่'))save();
+async function doPrint(){
+  if(!cur.saved&&confirm('บันทึกเอกสารก่อนพิมพ์ เพื่อจองเลขที่เอกสารหรือไม่'))await save();
   const old=document.title;
   document.title=[docNo(cur),cur.client.name].filter(Boolean).join(' ');
   window.print();
