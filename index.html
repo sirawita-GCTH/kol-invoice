@@ -214,7 +214,11 @@ textarea{resize:vertical;min-height:64px}
         <button class="btn small" id="addItem">+ เพิ่มรายการ</button>
         <label class="check">
           <input type="checkbox" data-f="wht">
-          <span>ลูกค้าหักภาษี ณ ที่จ่าย 3%<br><span class="hint">ใช้เมื่อผู้ว่าจ้างเป็นนิติบุคคล เช่น บริษัท หรือห้างหุ้นส่วน</span></span>
+          <span>ลูกค้าหักภาษี ณ ที่จ่าย 1%<br><span class="hint">ใช้เมื่อผู้ว่าจ้างเป็นนิติบุคคล เช่น บริษัท หรือห้างหุ้นส่วน</span></span>
+        </label>
+        <label class="check" id="grossUpRow">
+          <input type="checkbox" data-f="grossUp">
+          <span>ต้องการรับยอดสุทธิ (Net) ตามราคาที่กรอก<br><span class="hint">ราคาบนเอกสารจะเป็นราคาที่กรอก ÷ 0.99 เพื่อให้หลังหักภาษี 1% แล้วได้รับเท่ากับราคาที่กรอก (อาจต่างกันไม่เกิน 1 สตางค์จากการปัดเศษ)</span></span>
         </label>
       </fieldset>
 
@@ -385,12 +389,16 @@ function newDoc(type){
   const t=today();
   return {id:uid(),type,no:'',saved:false,date:t,dueDate:addDays(t,30),ref:'',
     client:{...CONFIG.CLIENT},
-    items:[{desc:'',qty:1,price:''}],wht:true,notes:'',
+    items:[{desc:'',qty:1,price:''}],wht:true,whtRate:1,grossUp:false,notes:'',
     status:type==='QT'?'open':'unpaid',fromId:null,convertedTo:null};
 }
+const rateOf=d=>d.whtRate??3;
+// ราคาต่อหน่วยบนเอกสาร: ถ้าเลือกรับ Net จะเป็นราคาที่กรอก ÷ (1 − อัตราภาษี) เช่น ÷ 0.99
+const unitPrice=(it,d=cur)=>d.wht&&d.grossUp?num(it.price)/(1-rateOf(d)/100):num(it.price);
+const lineAmt=(it,d=cur)=>r2(num(it.qty)*unitPrice(it,d));
 function calc(d){
-  const sub=r2(d.items.reduce((s,i)=>s+num(i.qty)*num(i.price),0));
-  const wht=d.wht?r2(sub*0.03):0;
+  const sub=r2(d.items.reduce((s,i)=>s+lineAmt(i,d),0));
+  const wht=d.wht?r2(sub*rateOf(d)/100):0;
   return {sub,wht,net:r2(sub-wht)};
 }
 const getPath=(o,p)=>p.split('.').reduce((a,k)=>a?.[k],o);
@@ -401,7 +409,12 @@ const confirmLeave=()=>!dirty||confirm('มีการแก้ไขที่�
 /* ---------- ฟอร์ม ---------- */
 function fillForm(){
   $$('[data-f]').forEach(el=>{const v=getPath(cur,el.dataset.f);if(el.type==='checkbox')el.checked=!!v;else el.value=v??'';});
-  renderItems();renderClientList();updateMeta();renderPreview();
+  updateGrossUI();renderItems();renderClientList();updateMeta();renderPreview();
+}
+function updateGrossUI(){
+  const box=document.querySelector('[data-f="grossUp"]');
+  box.disabled=!cur.wht;
+  $('#grossUpRow').style.opacity=cur.wht?'':'0.5';
 }
 function updateMeta(){
   $('#docNo').textContent=docNo(cur)+(cur.saved?'':' (ร่าง)');
@@ -411,17 +424,17 @@ function updateMeta(){
   $('#btnConvert').hidden=!(cur.type==='QT'&&cur.saved);
   $('#previewLabel').textContent=cur.saved?`${TYPE_NAME[cur.type]} ${cur.no}`:`${TYPE_NAME[cur.type]} (ยังไม่บันทึก)`;
 }
-function itemAmt(it){return money(r2(num(it.qty)*num(it.price)));}
+function itemAmt(it,d=cur){return money(lineAmt(it,d));}
 function renderItems(){
   $('#items').innerHTML=cur.items.map((it,i)=>`
     <div class="item" data-i="${i}">
       <textarea data-k="desc" rows="2" aria-label="รายละเอียดรายการที่ ${i+1}" placeholder="เช่น วิดีโอ TikTok 1 คลิป ความยาว 60 วินาที แก้ไขได้ 1 ครั้ง">${esc(it.desc)}</textarea>
       <div class="item-nums">
         <label>จำนวน<input type="number" data-k="qty" min="0" step="any" inputmode="decimal" value="${esc(it.qty)}"></label>
-        <label>ราคาต่อหน่วย (บาท)<input type="number" data-k="price" min="0" step="0.01" inputmode="decimal" value="${esc(it.price)}"></label>
+        <label>${cur.wht&&cur.grossUp?'ราคาสุทธิที่ต้องการรับ (บาท)':'ราคาต่อหน่วย (บาท)'}<input type="number" data-k="price" min="0" step="0.01" inputmode="decimal" value="${esc(it.price)}"></label>
       </div>
       <div class="item-foot">
-        <span class="item-amt">${itemAmt(it)} บาท</span>
+        <span class="item-amt">${cur.wht&&cur.grossUp?'ยอดบนเอกสาร ':''}${itemAmt(it)} บาท</span>
         <button class="btn small danger" data-remove aria-label="ลบรายการที่ ${i+1}">ลบ</button>
       </div>
     </div>`).join('');
@@ -442,7 +455,7 @@ function renderPreview(){
   const rows=items.length?items.map((it,i)=>`<tr>
       <td class="c">${i+1}</td><td>${br(it.desc)}</td>
       <td class="r">${num(it.qty).toLocaleString('th-TH',{maximumFractionDigits:2})}</td>
-      <td class="r">${money(num(it.price))}</td><td class="r">${itemAmt(it)}</td></tr>`).join('')
+      <td class="r">${money(r2(unitPrice(it,d)))}</td><td class="r">${itemAmt(it,d)}</td></tr>`).join('')
     :`<tr><td class="c"></td><td><span class="p-ph">ยังไม่มีรายการ</span></td><td></td><td></td><td></td></tr>`;
   const contact=[p.phone&&`โทร ${esc(p.phone)}`,p.email&&`อีเมล ${esc(p.email)}`].filter(Boolean).join('&emsp;');
   const c=d.client;
@@ -484,7 +497,7 @@ function renderPreview(){
     </div>
     <table class="p-totals">
       <tr><th>รวมเป็นเงิน</th><td>${money(t.sub)}</td></tr>
-      ${d.wht?`<tr><th>หักภาษี ณ ที่จ่าย 3%</th><td>−${money(t.wht)}</td></tr>`:''}
+      ${d.wht?`<tr><th>หักภาษี ณ ที่จ่าย ${rateOf(d)}%</th><td>−${money(t.wht)}</td></tr>`:''}
       <tr class="p-net"><th>${d.wht?'ยอดชำระสุทธิ':'ยอดรวมทั้งสิ้น'}</th><td>${money(t.net)}</td></tr>
     </table>
   </section>
@@ -554,7 +567,7 @@ function statusLabel(d){
 function docForSync(d,deleted){
   const t=calc(d);
   return {id:d.id,type:TYPE_NAME[d.type],no:d.no,date:d.date,dueDate:d.dueDate,ref:d.ref,client:d.client,
-    items:d.items.filter(i=>String(i.desc).trim()||num(i.price)).map(i=>`${String(i.desc).trim()} × ${num(i.qty)} @ ${money(num(i.price))}`).join('\n'),
+    items:d.items.filter(i=>String(i.desc).trim()||num(i.price)).map(i=>`${String(i.desc).trim()} × ${num(i.qty)} @ ${money(r2(unitPrice(i,d)))}`).join('\n'),
     subtotal:t.sub,wht:t.wht,net:t.net,status:deleted?'ลบแล้ว':statusLabel(d),notes:d.notes};
 }
 async function syncDoc(d,{quiet=false,deleted=false}={}){
@@ -646,7 +659,7 @@ function convert(id){
   if(q.status==='converted'&&!confirm(`${q.no} ออกใบแจ้งหนี้ไปแล้ว (${q.convertedTo}) ต้องการออกใบแจ้งหนี้อีกใบหรือไม่`))return;
   if(!confirmLeave())return;
   const inv=newDoc('INV');
-  inv.client=clone(q.client);inv.items=clone(q.items);inv.wht=q.wht;inv.notes=q.notes;inv.ref=q.no;inv.fromId=q.id;
+  inv.client=clone(q.client);inv.items=clone(q.items);inv.wht=q.wht;inv.whtRate=q.whtRate??3;inv.grossUp=!!q.grossUp;inv.notes=q.notes;inv.ref=q.no;inv.fromId=q.id;
   cur=inv;fillForm();setDirty(true);showTab('doc');
   toast(`สร้างใบแจ้งหนี้จาก ${q.no} แล้ว ตรวจสอบแล้วกดบันทึก`);
 }
@@ -688,7 +701,9 @@ $('#typeSeg').addEventListener('click',e=>{const b=e.target.closest('[data-type]
 $('#pane-doc').addEventListener('input',e=>{
   const el=e.target;if(!el.dataset.f)return;
   setPath(cur,el.dataset.f,el.type==='checkbox'?el.checked:el.value);
-  setDirty(true);if(el.dataset.f==='date')updateMeta();renderPreview();
+  setDirty(true);if(el.dataset.f==='date')updateMeta();
+  if(el.dataset.f==='wht'||el.dataset.f==='grossUp'){updateGrossUI();renderItems();}
+  renderPreview();
 });
 $('#pane-doc').addEventListener('change',e=>{
   const el=e.target;if(el.dataset.f!=='client.name')return;
@@ -698,7 +713,7 @@ $('#pane-doc').addEventListener('change',e=>{
 $('#items').addEventListener('input',e=>{
   const row=e.target.closest('.item'),k=e.target.dataset.k;if(!row||!k)return;
   const it=cur.items[+row.dataset.i];it[k]=e.target.value;
-  row.querySelector('.item-amt').textContent=itemAmt(it)+' บาท';
+  row.querySelector('.item-amt').textContent=(cur.wht&&cur.grossUp?'ยอดบนเอกสาร ':'')+itemAmt(it)+' บาท';
   setDirty(true);renderPreview();
 });
 $('#items').addEventListener('click',e=>{
