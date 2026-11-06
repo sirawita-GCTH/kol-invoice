@@ -8,6 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 :root{
   --font:"IBM Plex Sans Thai","Sarabun","Leelawadee UI","Thonburi",system-ui,sans-serif;
@@ -258,6 +260,15 @@ textarea{resize:vertical;min-height:64px}
         </label>
       </fieldset>
       <fieldset>
+        <legend>โซเชียลมีเดีย</legend>
+        <p class="hint">ใส่ชื่อแอคเคาท์หรือลิงก์ของช่องทางที่รับงาน กรอกเฉพาะช่องทางที่มี</p>
+        <label class="f">TikTok<input type="text" data-p="socialTiktok" placeholder="เช่น @yourname" autocapitalize="off"></label>
+        <label class="f">Instagram<input type="text" data-p="socialInstagram" placeholder="เช่น @yourname" autocapitalize="off"></label>
+        <label class="f">YouTube<input type="text" data-p="socialYoutube" placeholder="ชื่อช่องหรือลิงก์" autocapitalize="off"></label>
+        <label class="f">Facebook<input type="text" data-p="socialFacebook" placeholder="ชื่อเพจหรือลิงก์" autocapitalize="off"></label>
+        <label class="f">ช่องทางอื่น<input type="text" data-p="socialOther" placeholder="เช่น X @yourname, Lemon8 @yourname"></label>
+      </fieldset>
+      <fieldset>
         <legend>บัญชีรับเงิน</legend>
         <label class="f">ธนาคาร<input type="text" data-p="bankName" placeholder="เช่น กสิกรไทย"></label>
         <label class="f">ชื่อบัญชี<input type="text" data-p="bankAccName"></label>
@@ -315,7 +326,9 @@ const CONFIG={
 /* ================================================ */
 (function(){
 const KEY='kol-docs-v1';
-const defProfile={name:'',taxId:'',address:'',phone:'',email:'',bankName:'',bankAccName:'',bankAccNo:'',noVat:true,consent:false,idCard:null,bankBook:null};
+const defProfile={name:'',taxId:'',address:'',phone:'',email:'',bankName:'',bankAccName:'',bankAccNo:'',noVat:true,consent:false,idCard:null,bankBook:null,
+  socialTiktok:'',socialInstagram:'',socialYoutube:'',socialFacebook:'',socialOther:''};
+const SOCIAL=[['socialTiktok','TikTok'],['socialInstagram','Instagram'],['socialYoutube','YouTube'],['socialFacebook','Facebook'],['socialOther','อื่น ๆ']];
 const ATTACH={idCard:'สำเนาบัตรประชาชน',bankBook:'สำเนาหน้าบัญชีธนาคาร'};
 const online=()=>!!CONFIG.SHEET_URL;
 let db={profile:{...defProfile},docs:[]};
@@ -449,8 +462,9 @@ function renderClientList(){
 }
 
 /* ---------- ตัวอย่างเอกสาร ---------- */
-function renderPreview(){
-  const p=db.profile, d=cur, t=calc(d), isQT=d.type==='QT';
+function socialLine(p){return SOCIAL.filter(([k])=>String(p[k]||'').trim()).map(([k,l])=>`${l} ${esc(String(p[k]).trim())}`).join('&emsp;');}
+function paperHTML(d){
+  const p=db.profile, t=calc(d), isQT=d.type==='QT', social=socialLine(p);
   const items=d.items.filter(i=>String(i.desc).trim()||num(i.price));
   const rows=items.length?items.map((it,i)=>`<tr>
       <td class="c">${i+1}</td><td>${br(it.desc)}</td>
@@ -460,13 +474,14 @@ function renderPreview(){
   const contact=[p.phone&&`โทร ${esc(p.phone)}`,p.email&&`อีเมล ${esc(p.email)}`].filter(Boolean).join('&emsp;');
   const c=d.client;
   const bank=[p.bankName&&`ธนาคาร${esc(p.bankName)}`,p.bankAccName&&`ชื่อบัญชี ${esc(p.bankAccName)}`,p.bankAccNo&&`เลขที่บัญชี ${esc(p.bankAccNo)}`].filter(Boolean).join('&emsp;');
-  $('#paper').innerHTML=`
+  return `
   <header class="p-head">
     <div>
       <div class="p-name">${p.name?esc(p.name):'<span class="p-ph">ชื่อของคุณ (กรอกในแท็บข้อมูลของฉัน)</span>'}</div>
       ${p.address?`<div>${br(p.address)}</div>`:''}
       ${p.taxId?`<div>เลขประจำตัวผู้เสียภาษี ${esc(p.taxId)}</div>`:''}
       ${contact?`<div>${contact}</div>`:''}
+      ${social?`<div>${social}</div>`:''}
     </div>
     <div>
       <div class="p-title">${TYPE_NAME[d.type]}</div>
@@ -509,8 +524,8 @@ function renderPreview(){
     <div><div class="p-line"></div><div>(.....................................)</div>
       <div class="p-lbl">${isQT?'ผู้อนุมัติสั่งจ้าง':'ผู้รับวางบิล'}</div><div class="p-lbl">วันที่ ........../........../..........</div></div>
   </footer>`;
-  fit();
 }
+function renderPreview(){$('#paper').innerHTML=paperHTML(cur);fit();}
 function fit(){
   const box=$('#paperBox'), p=$('#paper');
   p.style.transform='none';
@@ -534,7 +549,7 @@ function renderHistory(){
       <div>
         <div><span class="badge">${TYPE_NAME[d.type]}</span><span class="h-no">${esc(d.no)}</span></div>
         <div class="h-client">${esc(d.client?.name||'ไม่ระบุลูกค้า')}</div>
-        <div class="h-sub">${thDate(d.date)}&emsp;${statusText(d)}${online()&&!d.synced?'&emsp;<span class="st unpaid">ยังไม่ส่งเข้าระบบ</span>':''}</div>
+        <div class="h-sub">${thDate(d.date)}&emsp;${statusText(d)}${online()&&(!d.synced||d.needPdf)?'&emsp;<span class="st unpaid">ยังไม่ส่งเข้าระบบ</span>':''}</div>
       </div>
       <div class="h-amt">${money(calc(d).net)}</div>
       <div class="h-actions">
@@ -558,7 +573,8 @@ function profileForSync(){
   const p=db.profile;
   return {name:p.name,taxId:p.taxId,address:p.address,phone:p.phone,email:p.email,bankName:p.bankName,
     bankAccName:p.bankAccName,bankAccNo:p.bankAccNo,consent:!!p.consent,
-    idCardUrl:p.idCard?.url||'',bankBookUrl:p.bankBook?.url||''};
+    idCardUrl:p.idCard?.url||'',bankBookUrl:p.bankBook?.url||'',
+    socialTiktok:p.socialTiktok,socialInstagram:p.socialInstagram,socialYoutube:p.socialYoutube,socialFacebook:p.socialFacebook,socialOther:p.socialOther};
 }
 function statusLabel(d){
   if(d.type==='QT')return d.status==='converted'?'ออกใบแจ้งหนี้แล้ว':'รอลูกค้าตอบรับ';
@@ -570,11 +586,38 @@ function docForSync(d,deleted){
     items:d.items.filter(i=>String(i.desc).trim()||num(i.price)).map(i=>`${String(i.desc).trim()} × ${num(i.qty)} @ ${money(r2(unitPrice(i,d)))}`).join('\n'),
     subtotal:t.sub,wht:t.wht,net:t.net,status:deleted?'ลบแล้ว':statusLabel(d),notes:d.notes};
 }
+async function makePdf(d){
+  if(!window.html2canvas||!window.jspdf)throw new Error('pdf library not loaded');
+  const host=document.createElement('div');
+  host.style.cssText='position:fixed;left:-10000px;top:0;';
+  const el=document.createElement('article');
+  el.className='paper';el.style.boxShadow='none';el.innerHTML=paperHTML(d);
+  host.appendChild(el);document.body.appendChild(host);
+  try{
+    if(document.fonts&&document.fonts.ready)await document.fonts.ready;
+    const canvas=await html2canvas(el,{scale:2,backgroundColor:'#ffffff',logging:false});
+    const pdf=new window.jspdf.jsPDF({unit:'mm',format:'a4'});
+    const PW=210,PH=297, pagePx=Math.floor(canvas.width*PH/PW);
+    if(canvas.height<=pagePx*1.01){
+      pdf.addImage(canvas.toDataURL('image/jpeg',0.9),'JPEG',0,0,PW,Math.min(PH,canvas.height*PW/canvas.width));
+    }else{
+      for(let y=0,first=true;y<canvas.height;y+=pagePx,first=false){
+        const h=Math.min(pagePx,canvas.height-y), c=document.createElement('canvas');
+        c.width=canvas.width;c.height=h;c.getContext('2d').drawImage(canvas,0,y,canvas.width,h,0,0,canvas.width,h);
+        if(!first)pdf.addPage();
+        pdf.addImage(c.toDataURL('image/jpeg',0.9),'JPEG',0,0,PW,h*PW/canvas.width);
+      }
+    }
+    return pdf.output('datauristring').split(',')[1];
+  }finally{host.remove();}
+}
 async function syncDoc(d,{quiet=false,deleted=false}={}){
   if(!online()||!d)return;
   try{
-    await api({action:'saveDoc',profile:profileForSync(),doc:docForSync(d,deleted)});
-    if(!deleted){const s=db.docs.find(x=>x.id===d.id);if(s){s.synced=true;persist();}}
+    let pdf='';
+    if(!deleted&&d.needPdf){try{pdf=await makePdf(d);}catch(e){pdf='';}}
+    await api({action:'saveDoc',profile:profileForSync(),doc:docForSync(d,deleted),pdf});
+    if(!deleted){const s=db.docs.find(x=>x.id===d.id);if(s){s.synced=true;if(pdf)s.needPdf=false;persist();}}
     if(!quiet)toast(`ส่ง ${d.no} เข้าระบบแล้ว`);
   }catch(e){
     if(!quiet)toast(`บันทึก ${d.no} ในเครื่องแล้ว แต่ส่งเข้าระบบไม่สำเร็จ จะลองส่งใหม่อัตโนมัติ`);
@@ -584,7 +627,7 @@ async function syncDoc(d,{quiet=false,deleted=false}={}){
 let syncing=false;
 async function syncPending(){
   if(!online()||syncing)return;syncing=true;
-  for(const d of db.docs.filter(x=>!x.synced))await syncDoc(d,{quiet:true});
+  for(const d of db.docs.filter(x=>!x.synced||x.needPdf))await syncDoc(d,{quiet:true});
   syncing=false;
 }
 
@@ -642,7 +685,7 @@ function save(){
   cur.updatedAt=new Date().toISOString();
   const idx=db.docs.findIndex(d=>d.id===cur.id);
   if(idx>=0)db.docs[idx]=clone(cur);else db.docs.unshift(clone(cur));
-  const stored=db.docs.find(d=>d.id===cur.id);stored.synced=false;
+  const stored=db.docs.find(d=>d.id===cur.id);stored.synced=false;stored.needPdf=true;
   let fromQ=null;
   if(cur.fromId){fromQ=db.docs.find(d=>d.id===cur.fromId);if(fromQ&&fromQ.status!=='converted'){fromQ.status='converted';fromQ.convertedTo=cur.no;fromQ.synced=false;}else fromQ=null;}
   const ok=persist();
