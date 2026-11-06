@@ -93,6 +93,11 @@ textarea{resize:vertical;min-height:64px}
 .backup{border-top:1px solid var(--line);margin-top:18px;padding-top:14px}
 .backup .row2 .btn{width:100%}
 
+.attach{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-top:10px}
+.a-name{font-weight:500}
+.a-st{font-size:13px;color:var(--muted)}
+.a-st.done{color:var(--brand)}
+
 .preview-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;color:var(--muted);font-size:14px;min-height:40px}
 .paper-box{width:100%;overflow:hidden;position:relative}
 
@@ -230,7 +235,7 @@ textarea{resize:vertical;min-height:64px}
     </div>
 
     <div class="pane" id="pane-profile" hidden>
-      <p class="hint">ข้อมูลนี้จะแสดงบนหัวเอกสารทุกใบ และบันทึกอัตโนมัติ</p>
+      <p class="hint" id="profileHint">ข้อมูลนี้จะแสดงบนหัวเอกสารทุกใบ และบันทึกอัตโนมัติ</p>
       <fieldset>
         <legend>ผู้ออกเอกสาร</legend>
         <label class="f">ชื่อ-นามสกุล<input type="text" data-p="name"></label>
@@ -251,6 +256,25 @@ textarea{resize:vertical;min-height:64px}
         <label class="f">ชื่อบัญชี<input type="text" data-p="bankAccName"></label>
         <label class="f">เลขที่บัญชี<input type="text" data-p="bankAccNo" inputmode="numeric"></label>
       </fieldset>
+      <fieldset>
+        <legend>เอกสารแนบสำหรับการจ่ายเงิน</legend>
+        <p class="hint" id="attachOff" hidden>หน้านี้ยังไม่ได้เชื่อมต่อระบบ จึงยังแนบไฟล์ไม่ได้</p>
+        <label class="check">
+          <input type="checkbox" data-p="consent">
+          <span id="consentText"></span>
+        </label>
+        <div class="attach" data-kind="idCard">
+          <div><div class="a-name">สำเนาบัตรประชาชน</div><div class="a-st"></div></div>
+          <button class="btn small" data-pick>แนบไฟล์</button>
+          <input type="file" accept="image/*,application/pdf" hidden>
+        </div>
+        <div class="attach" data-kind="bankBook">
+          <div><div class="a-name">สำเนาหน้าบัญชีธนาคาร</div><div class="a-st"></div></div>
+          <button class="btn small" data-pick>แนบไฟล์</button>
+          <input type="file" accept="image/*,application/pdf" hidden>
+        </div>
+        <p class="hint">รองรับรูปภาพหรือ PDF ไม่เกิน 5 MB ไฟล์จะถูกส่งไปเก็บที่ระบบของผู้ว่าจ้างโดยตรง ไม่ได้เก็บไว้ในเครื่องนี้ แนะนำให้เขียนกำกับบนสำเนาว่าใช้เพื่อการรับเงินเท่านั้น</p>
+      </fieldset>
     </div>
   </section>
 
@@ -266,9 +290,18 @@ textarea{resize:vertical;min-height:64px}
 <div class="toast no-print" id="toast" role="status" aria-live="polite"></div>
 
 <script>
+/* ===== ตั้งค่าการเชื่อมต่อ (แก้ 3 บรรทัดนี้) ===== */
+const CONFIG={
+  SHEET_URL:'',          // ลิงก์ Web app จาก Google Apps Script (ลงท้ายด้วย /exec)
+  API_KEY:'',            // รหัสเดียวกับที่ตั้งใน Code.gs
+  AGENCY_NAME:'ผู้ว่าจ้าง' // ชื่อบริษัทของคุณ ใช้ในข้อความขอความยินยอม
+};
+/* ================================================ */
 (function(){
 const KEY='kol-docs-v1';
-const defProfile={name:'',taxId:'',address:'',phone:'',email:'',bankName:'',bankAccName:'',bankAccNo:'',noVat:true};
+const defProfile={name:'',taxId:'',address:'',phone:'',email:'',bankName:'',bankAccName:'',bankAccNo:'',noVat:true,consent:false,idCard:null,bankBook:null};
+const ATTACH={idCard:'สำเนาบัตรประชาชน',bankBook:'สำเนาหน้าบัญชีธนาคาร'};
+const online=()=>!!CONFIG.SHEET_URL;
 let db={profile:{...defProfile},docs:[]};
 let cur=null, dirty=false;
 
@@ -476,7 +509,7 @@ function renderHistory(){
       <div>
         <div><span class="badge">${TYPE_NAME[d.type]}</span><span class="h-no">${esc(d.no)}</span></div>
         <div class="h-client">${esc(d.client?.name||'ไม่ระบุลูกค้า')}</div>
-        <div class="h-sub">${thDate(d.date)}&emsp;${statusText(d)}</div>
+        <div class="h-sub">${thDate(d.date)}&emsp;${statusText(d)}${online()&&!d.synced?'&emsp;<span class="st unpaid">ยังไม่ส่งเข้าระบบ</span>':''}</div>
       </div>
       <div class="h-amt">${money(calc(d).net)}</div>
       <div class="h-actions">
@@ -488,16 +521,109 @@ function renderHistory(){
     </div>`).join('');
 }
 
+/* ---------- ส่งข้อมูลเข้าระบบ ---------- */
+const userErr=m=>Object.assign(new Error(m),{userMsg:m});
+async function api(payload){
+  const res=await fetch(CONFIG.SHEET_URL,{method:'POST',body:JSON.stringify({...payload,key:CONFIG.API_KEY})});
+  const j=await res.json();
+  if(!j.ok)throw new Error(j.error||'error');
+  return j;
+}
+function profileForSync(){
+  const p=db.profile;
+  return {name:p.name,taxId:p.taxId,address:p.address,phone:p.phone,email:p.email,bankName:p.bankName,
+    bankAccName:p.bankAccName,bankAccNo:p.bankAccNo,consent:!!p.consent,
+    idCardUrl:p.idCard?.url||'',bankBookUrl:p.bankBook?.url||''};
+}
+function statusLabel(d){
+  if(d.type==='QT')return d.status==='converted'?'ออกใบแจ้งหนี้แล้ว':'รอลูกค้าตอบรับ';
+  return d.status==='paid'?'ชำระแล้ว':'ค้างชำระ';
+}
+function docForSync(d,deleted){
+  const t=calc(d);
+  return {id:d.id,type:TYPE_NAME[d.type],no:d.no,date:d.date,dueDate:d.dueDate,ref:d.ref,client:d.client,
+    items:d.items.filter(i=>String(i.desc).trim()||num(i.price)).map(i=>`${String(i.desc).trim()} × ${num(i.qty)} @ ${money(num(i.price))}`).join('\n'),
+    subtotal:t.sub,wht:t.wht,net:t.net,status:deleted?'ลบแล้ว':statusLabel(d),notes:d.notes};
+}
+async function syncDoc(d,{quiet=false,deleted=false}={}){
+  if(!online()||!d)return;
+  try{
+    await api({action:'saveDoc',profile:profileForSync(),doc:docForSync(d,deleted)});
+    if(!deleted){const s=db.docs.find(x=>x.id===d.id);if(s){s.synced=true;persist();}}
+    if(!quiet)toast(`ส่ง ${d.no} เข้าระบบแล้ว`);
+  }catch(e){
+    if(!quiet)toast(`บันทึก ${d.no} ในเครื่องแล้ว แต่ส่งเข้าระบบไม่สำเร็จ จะลองส่งใหม่อัตโนมัติ`);
+  }
+  renderHistory();
+}
+let syncing=false;
+async function syncPending(){
+  if(!online()||syncing)return;syncing=true;
+  for(const d of db.docs.filter(x=>!x.synced))await syncDoc(d,{quiet:true});
+  syncing=false;
+}
+
+const MAX_FILE=5*1024*1024;
+const fileB64=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]);r.onerror=()=>rej(userErr('อ่านไฟล์นี้ไม่ได้'));r.readAsDataURL(f);});
+const loadImg=f=>new Promise((res,rej)=>{const u=URL.createObjectURL(f),img=new Image();
+  img.onload=()=>{URL.revokeObjectURL(u);res(img);};
+  img.onerror=()=>{URL.revokeObjectURL(u);rej(userErr('เปิดรูปนี้ไม่ได้ ลองบันทึกเป็น JPG แล้วแนบใหม่'));};img.src=u;});
+async function prepFile(file){
+  if(file.type==='application/pdf'){
+    if(file.size>MAX_FILE)throw userErr('ไฟล์ PDF ใหญ่เกิน 5 MB');
+    return {base64:await fileB64(file),mimeType:'application/pdf'};
+  }
+  if(!file.type.startsWith('image/'))throw userErr('รองรับเฉพาะรูปภาพหรือไฟล์ PDF');
+  const img=await loadImg(file);
+  const s=Math.min(1,2000/Math.max(img.naturalWidth,img.naturalHeight));
+  const c=document.createElement('canvas');c.width=Math.round(img.naturalWidth*s);c.height=Math.round(img.naturalHeight*s);
+  const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(img,0,0,c.width,c.height);
+  return {base64:c.toDataURL('image/jpeg',0.85).split(',')[1],mimeType:'image/jpeg'};
+}
+async function uploadAttach(kind,file){
+  const p=db.profile;
+  if(!p.name||!p.taxId){toast('กรอกชื่อและเลขประจำตัวผู้เสียภาษีก่อนแนบไฟล์');return;}
+  if(!p.consent){toast('กดยินยอมให้เก็บสำเนาเอกสารก่อนแนบไฟล์');return;}
+  setAttachBusy(kind,true);
+  try{
+    const f=await prepFile(file);
+    const j=await api({action:'upload',kind,label:ATTACH[kind],profile:profileForSync(),...f});
+    p[kind]={url:j.url,at:new Date().toISOString()};persist();
+    toast(`ส่ง${ATTACH[kind]}แล้ว`);
+  }catch(e){toast(e.userMsg||`ส่ง${ATTACH[kind]}ไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่`);}
+  setAttachBusy(kind,false);
+}
+function setAttachBusy(kind,busy){
+  const b=document.querySelector(`.attach[data-kind="${kind}"] [data-pick]`);
+  b.disabled=busy;
+  if(busy)b.textContent='กำลังส่ง…';else renderAttach();
+}
+function renderAttach(){
+  $('#attachOff').hidden=online();
+  $('#consentText').textContent=`ยินยอมให้ ${CONFIG.AGENCY_NAME} เก็บสำเนาบัตรประชาชนและสำเนาบัญชีธนาคาร เพื่อใช้ในการจ่ายเงินและออกหนังสือรับรองการหักภาษี ณ ที่จ่ายเท่านั้น`;
+  if(online())$('#profileHint').textContent=`ข้อมูลนี้จะแสดงบนหัวเอกสารทุกใบ บันทึกอัตโนมัติ และส่งให้ ${CONFIG.AGENCY_NAME} พร้อมเอกสารที่คุณบันทึก`;
+  $$('.attach').forEach(a=>{
+    const v=db.profile[a.dataset.kind], st=a.querySelector('.a-st'), b=a.querySelector('[data-pick]');
+    st.textContent=v?`ส่งแล้วเมื่อ ${thDate(isoOf(new Date(v.at)))}`:'ยังไม่ได้แนบ';
+    st.classList.toggle('done',!!v);
+    b.textContent=v?'เปลี่ยนไฟล์':'แนบไฟล์';
+    b.disabled=!online();
+  });
+}
+
 /* ---------- การทำงาน ---------- */
 function save(){
   if(!cur.saved){cur.no=nextNo(cur.type,cur.date);cur.saved=true;cur.createdAt=new Date().toISOString();}
   cur.updatedAt=new Date().toISOString();
   const idx=db.docs.findIndex(d=>d.id===cur.id);
   if(idx>=0)db.docs[idx]=clone(cur);else db.docs.unshift(clone(cur));
-  if(cur.fromId){const q=db.docs.find(d=>d.id===cur.fromId);if(q){q.status='converted';q.convertedTo=cur.no;}}
+  const stored=db.docs.find(d=>d.id===cur.id);stored.synced=false;
+  let fromQ=null;
+  if(cur.fromId){fromQ=db.docs.find(d=>d.id===cur.fromId);if(fromQ&&fromQ.status!=='converted'){fromQ.status='converted';fromQ.convertedTo=cur.no;fromQ.synced=false;}else fromQ=null;}
   const ok=persist();
   setDirty(false);updateMeta();renderClientList();renderHistory();renderPreview();
   toast(ok?`บันทึก ${cur.no} แล้ว`:`บันทึก ${cur.no} ไว้ชั่วคราว ข้อมูลจะหายเมื่อปิดหน้า`);
+  if(online()){syncDoc(stored);if(fromQ)syncDoc(fromQ,{quiet:true});}
 }
 function openDoc(id){
   const d=db.docs.find(x=>x.id===id);if(!d||!confirmLeave())return;
@@ -516,12 +642,13 @@ function togglePaid(id){
   const d=db.docs.find(x=>x.id===id);if(!d)return;
   d.status=d.status==='paid'?'unpaid':'paid';
   if(cur.id===id)cur.status=d.status;
-  persist();renderHistory();
+  d.synced=false;persist();renderHistory();syncDoc(d,{quiet:true});
 }
 function del(id){
   const d=db.docs.find(x=>x.id===id);if(!d)return;
   if(!confirm(`ลบ ${d.no} หรือไม่ ลบแล้วกู้คืนไม่ได้`))return;
   db.docs=db.docs.filter(x=>x.id!==id);persist();
+  if(d.synced||online())syncDoc(d,{quiet:true,deleted:true});
   if(cur.id===id){cur=newDoc('QT');setDirty(false);fillForm();}
   renderHistory();toast(`ลบ ${d.no} แล้ว`);
 }
@@ -607,7 +734,7 @@ $('#importFile').addEventListener('change',e=>{
       p.docs.forEach(d=>{if(d&&d.id&&!ids.has(d.id)){db.docs.push(d);added++;}});
       db.docs.sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
       if(!db.profile.name&&p.profile)db.profile={...defProfile,...p.profile};
-      persist();fillProfile();renderHeadName();renderHistory();renderClientList();renderPreview();
+      persist();fillProfile();renderHeadName();renderAttach();renderHistory();syncPending();renderClientList();renderPreview();
       toast(`นำเข้าเอกสาร ${added} ใบแล้ว`);
     }catch(err){toast('ไฟล์นี้ไม่ใช่ไฟล์สำรองของระบบนี้ ลองเลือกไฟล์ .json ที่ส่งออกจากหน้านี้');}
     e.target.value='';
@@ -617,13 +744,20 @@ $('#importFile').addEventListener('change',e=>{
 
 function fillProfile(){$$('[data-p]').forEach(el=>{const v=db.profile[el.dataset.p];if(el.type==='checkbox')el.checked=!!v;else el.value=v??'';});}
 
+$$('.attach').forEach(a=>{
+  const inp=a.querySelector('input[type=file]');
+  a.querySelector('[data-pick]').addEventListener('click',()=>inp.click());
+  inp.addEventListener('change',()=>{const f=inp.files[0];inp.value='';if(f)uploadAttach(a.dataset.kind,f);});
+});
+window.addEventListener('online',syncPending);
 window.addEventListener('resize',fit);
 window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
 
 /* ---------- เริ่มต้น ---------- */
 load();
 cur=newDoc('QT');
-fillProfile();renderHeadName();fillForm();
+fillProfile();renderHeadName();renderAttach();fillForm();
+syncPending();
 if(!db.profile.name){showTab('profile');toast('เริ่มจากกรอกข้อมูลของคุณก่อน ระบบจะจำไว้ให้');}
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit);
 })();
