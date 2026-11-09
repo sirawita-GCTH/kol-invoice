@@ -14,13 +14,13 @@
 :root{
   --font:"IBM Plex Sans Thai","Sarabun","Leelawadee UI","Thonburi",system-ui,sans-serif;
   --bg:#EDF1EE;--surface:#FFFFFF;--ink:#17201D;--muted:#5E6A65;--line:#D3DAD6;
-  --brand:#0E5A4A;--brand-ink:#FFFFFF;--soft:#E0ECE7;--warn:#A2611A;--danger:#A33A2A;
+  --brand:#0E5A4A;--brand-ink:#FFFFFF;--soft:#E0ECE7;--warn:#A2611A;--warn-soft:#F7EBDB;--danger:#A33A2A;
   color-scheme:light;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --bg:#111614;--surface:#1A211F;--ink:#E6ECE9;--muted:#9AA6A1;--line:#2E3935;
-    --brand:#4FB79C;--brand-ink:#0A1915;--soft:#1F3530;--warn:#E0A55A;--danger:#E58370;
+    --brand:#4FB79C;--brand-ink:#0A1915;--soft:#1F3530;--warn:#E0A55A;--warn-soft:#33281A;--danger:#E58370;
     color-scheme:dark;
   }
 }
@@ -63,7 +63,28 @@ textarea{resize:vertical;min-height:64px}
 .docno{font-size:18px;font-weight:600;color:var(--ink);margin-top:2px}
 .hint{font-size:13px;color:var(--muted);margin:4px 0 12px}
 
-.new-row{display:flex;gap:8px;margin-bottom:14px}
+[hidden]{display:none!important}
+.start{max-width:860px;margin:0 auto;padding:40px 20px 56px}
+.start h1{font-size:26px;margin:0 0 6px;line-height:1.3}
+.start .lead{color:var(--muted);margin:0 0 24px}
+.choices{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.choice{display:flex;flex-direction:column;align-items:flex-start;gap:8px;text-align:left;padding:24px;border-radius:14px;
+  border:1.5px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;transition:border-color .15s,transform .15s}
+.choice:hover{border-color:var(--brand);transform:translateY(-2px)}
+.c-tag{font-size:12px;font-weight:700;letter-spacing:.06em;padding:2px 10px;border-radius:99px;background:var(--soft);color:var(--brand)}
+.choice[data-start="INV"] .c-tag{background:var(--warn-soft);color:var(--warn)}
+.c-title{font-size:21px;font-weight:700}
+.c-desc{color:var(--muted);font-size:14.5px}
+.c-desc b{color:var(--ink)}
+.c-go{margin-top:6px;font-weight:600;color:var(--brand)}
+.start-note{margin-top:20px;padding:12px 16px;border-radius:10px;background:var(--soft);display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.start-links{margin-top:20px;display:flex;flex-wrap:wrap;gap:8px}
+.type-banner{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;border-radius:10px;margin-bottom:16px;background:var(--soft);border-left:4px solid var(--brand)}
+.type-banner[data-type="INV"]{background:var(--warn-soft);border-left-color:var(--warn)}
+.tb-l{font-size:12px;color:var(--muted)}
+.tb-t{font-size:18px;font-weight:700}
+@media (max-width:640px){.choices{grid-template-columns:1fr}.start{padding-top:28px}.start h1{font-size:22px}}
+@media (prefers-reduced-motion:reduce){.choice{transition:none}.choice:hover{transform:none}}
 .new-row .btn{flex:1}
 .seg{display:flex;background:var(--bg);border-radius:10px;padding:3px;margin-bottom:6px}
 .seg button{flex:1;border:0;background:none;padding:8px;border-radius:8px;color:var(--muted)}
@@ -158,7 +179,8 @@ textarea{resize:vertical;min-height:64px}
 
 <header class="bar no-print">
   <div class="brand"><strong>เอกสารรับงาน</strong><span id="headName"></span></div>
-  <div class="bar-actions">
+  <div class="bar-actions" id="barActions">
+    <button class="btn" id="btnHome">หน้าแรก</button>
     <span id="dirtyFlag" class="flag" hidden>ยังไม่ได้บันทึก</span>
     <button class="btn" id="btnPrint">พิมพ์ / PDF</button>
     <button class="btn primary" id="btnSave">บันทึก</button>
@@ -166,7 +188,34 @@ textarea{resize:vertical;min-height:64px}
 </header>
 <div id="storageWarn" class="warn no-print" hidden>เบราว์เซอร์นี้เก็บข้อมูลไม่ได้ (อาจเปิดแบบไม่ระบุตัวตน) เอกสารจะหายเมื่อปิดหน้า ให้พิมพ์เป็น PDF เก็บไว้</div>
 
-<main class="layout">
+<section class="start no-print" id="start" hidden>
+  <h1>วันนี้ต้องการออกเอกสารอะไร</h1>
+  <p class="lead">เลือกประเภทเอกสารให้ถูกต้องก่อนเริ่มกรอก ระบบจะออกเลขที่และหัวเอกสารให้ตามประเภทที่เลือก</p>
+  <div class="choices">
+    <button class="choice" data-start="QT">
+      <span class="c-tag">QT</span>
+      <span class="c-title">ใบเสนอราคา</span>
+      <span class="c-desc">ใช้ <b>ก่อนเริ่มงาน</b> เพื่อเสนอราคาให้ผู้ว่าจ้างอนุมัติ</span>
+      <span class="c-go">เริ่มออกใบเสนอราคา →</span>
+    </button>
+    <button class="choice" data-start="INV">
+      <span class="c-tag">INV</span>
+      <span class="c-title">ใบแจ้งหนี้ (Invoice)</span>
+      <span class="c-desc">ใช้ <b>หลังส่งงานแล้ว</b> เพื่อเรียกเก็บเงินจากผู้ว่าจ้าง</span>
+      <span class="c-go">เริ่มออกใบแจ้งหนี้ →</span>
+    </button>
+  </div>
+  <div class="start-note" id="startProfile" hidden>
+    <span>ยังไม่ได้กรอกข้อมูลของคุณ เช่น ชื่อ เลขประจำตัวผู้เสียภาษี และบัญชีรับเงิน</span>
+    <button class="btn small" data-goto="profile">กรอกข้อมูลของฉัน</button>
+  </div>
+  <div class="start-links">
+    <button class="btn small" data-goto="history">ดูเอกสารที่เคยออก</button>
+    <button class="btn small" data-goto="profile">ข้อมูลของฉัน</button>
+  </div>
+</section>
+
+<main class="layout" id="mainLayout">
   <section class="editor no-print">
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="doc" aria-selected="true">เอกสาร</button>
@@ -175,15 +224,10 @@ textarea{resize:vertical;min-height:64px}
     </nav>
 
     <div class="pane" id="pane-doc">
-      <div class="new-row">
-        <button class="btn small" data-new="QT">+ ใบเสนอราคาใหม่</button>
-        <button class="btn small" data-new="INV">+ ใบแจ้งหนี้ใหม่</button>
+      <div class="type-banner" id="typeBanner">
+        <div><div class="tb-l">กำลังออก</div><div class="tb-t" id="typeTitle"></div></div>
+        <button class="btn small" id="btnChange">เปลี่ยนประเภท</button>
       </div>
-      <div class="seg" id="typeSeg">
-        <button data-type="QT" aria-pressed="true">ใบเสนอราคา</button>
-        <button data-type="INV" aria-pressed="false">ใบแจ้งหนี้</button>
-      </div>
-      <p class="hint" id="typeLock" hidden>เอกสารที่บันทึกแล้วเปลี่ยนประเภทไม่ได้ ใช้ปุ่ม “แปลงเป็นใบแจ้งหนี้” แทน</p>
 
       <fieldset>
         <legend>รายละเอียดเอกสาร</legend>
@@ -296,7 +340,7 @@ textarea{resize:vertical;min-height:64px}
     </div>
   </section>
 
-  <section class="preview">
+  <section class="preview" id="previewPane">
     <div class="preview-head no-print">
       <span id="previewLabel">ตัวอย่างเอกสาร</span>
       <button class="btn small" id="btnConvert" hidden>แปลงเป็นใบแจ้งหนี้</button>
@@ -434,8 +478,9 @@ function updateGrossUI(){
 function updateMeta(){
   $('#docNo').textContent=cur.saved?cur.no:(online()?'ได้เลขอัตโนมัติเมื่อกดบันทึก':nextNo(cur.type)+' (ร่าง)');
   $('#dueLabel').textContent=cur.type==='QT'?'ยืนราคาถึง':'ครบกำหนดชำระ';
-  $$('#typeSeg button').forEach(b=>{b.setAttribute('aria-pressed',String(b.dataset.type===cur.type));b.disabled=cur.saved;});
-  $('#typeLock').hidden=!cur.saved;
+  $('#typeTitle').textContent=cur.type==='QT'?'ใบเสนอราคา':'ใบแจ้งหนี้ (Invoice)';
+  $('#typeBanner').dataset.type=cur.type;
+  $('#btnChange').textContent=cur.saved?'ออกเอกสารใบใหม่':'เปลี่ยนประเภท';
   $('#btnConvert').hidden=!(cur.type==='QT'&&cur.saved);
   $('#previewLabel').textContent=cur.saved?`${TYPE_NAME[cur.type]} ${cur.no}`:`${TYPE_NAME[cur.type]} (ยังไม่บันทึก)`;
 }
@@ -712,7 +757,7 @@ async function save(){
 }
 function openDoc(id){
   const d=db.docs.find(x=>x.id===id);if(!d||!confirmLeave())return;
-  cur=clone(d);setDirty(false);fillForm();showTab('doc');
+  cur=clone(d);setDirty(false);fillForm();chosen=true;showStart(false);showTab('doc');
 }
 function convert(id){
   const q=db.docs.find(x=>x.id===id);if(!q)return;
@@ -720,7 +765,7 @@ function convert(id){
   if(!confirmLeave())return;
   const inv=newDoc('INV');
   inv.client=clone(q.client);inv.items=clone(q.items);inv.wht=q.wht;inv.whtRate=q.whtRate??3;inv.grossUp=!!q.grossUp;inv.notes=q.notes;inv.ref=q.no;inv.fromId=q.id;
-  cur=inv;fillForm();setDirty(true);showTab('doc');
+  cur=inv;fillForm();setDirty(true);chosen=true;showStart(false);showTab('doc');
   toast(`สร้างใบแจ้งหนี้จาก ${q.no} แล้ว ตรวจสอบแล้วกดบันทึก`);
 }
 function togglePaid(id){
@@ -734,7 +779,7 @@ function del(id){
   if(!confirm(`ลบ ${d.no} หรือไม่ ลบแล้วกู้คืนไม่ได้`))return;
   db.docs=db.docs.filter(x=>x.id!==id);persist();
   if(d.synced||online())syncDoc(d,{quiet:true,deleted:true});
-  if(cur.id===id){cur=newDoc('QT');setDirty(false);fillForm();}
+  if(cur.id===id){cur=newDoc('QT');setDirty(false);fillForm();chosen=false;$('#previewPane').hidden=true;}
   renderHistory();toast(`ลบ ${d.no} แล้ว`);
 }
 async function doPrint(){
@@ -744,7 +789,25 @@ async function doPrint(){
   window.print();
   setTimeout(()=>{document.title=old;},800);
 }
+let chosen=false;
+function showStart(on){
+  $('#start').hidden=!on;$('#mainLayout').hidden=on;$('#barActions').hidden=on;
+  $('#startProfile').hidden=!!db.profile.name;
+  $('#previewPane').hidden=!chosen;
+  window.scrollTo(0,0);
+  if(!on)requestAnimationFrame(fit);
+}
+function startDoc(type){
+  cur=newDoc(type);setDirty(false);fillForm();chosen=true;showStart(false);
+  if(!db.profile.name){showTab('profile');toast('กรอกข้อมูลของคุณก่อน แล้วกดแท็บ “เอกสาร” เพื่อกรอกต่อ');}
+  else showTab('doc');
+}
+function goHome(){
+  if(!confirmLeave())return;
+  setDirty(false);chosen=false;showStart(true);
+}
 function showTab(name){
+  if(name==='doc'&&!chosen){showStart(true);return;}
   $$('.tabs button').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===name)));
   ['doc','history','profile'].forEach(n=>{$('#pane-'+n).hidden=n!==name;});
   if(name==='history')renderHistory();
@@ -755,8 +818,10 @@ function renderHeadName(){$('#headName').textContent=db.profile.name;}
 
 /* ---------- ผูกเหตุการณ์ ---------- */
 $('.tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b)showTab(b.dataset.tab);});
-$$('[data-new]').forEach(b=>b.addEventListener('click',()=>{if(!confirmLeave())return;cur=newDoc(b.dataset.new);setDirty(false);fillForm();}));
-$('#typeSeg').addEventListener('click',e=>{const b=e.target.closest('[data-type]');if(!b||cur.saved||b.dataset.type===cur.type)return;cur.type=b.dataset.type;cur.status=cur.type==='QT'?'open':'unpaid';setDirty(true);updateMeta();renderPreview();});
+$$('[data-start]').forEach(b=>b.addEventListener('click',()=>startDoc(b.dataset.start)));
+$$('[data-goto]').forEach(b=>b.addEventListener('click',()=>{showStart(false);showTab(b.dataset.goto);}));
+$('#btnHome').addEventListener('click',goHome);
+$('#btnChange').addEventListener('click',goHome);
 
 $('#pane-doc').addEventListener('input',e=>{
   const el=e.target;if(!el.dataset.f)return;
@@ -845,7 +910,7 @@ load();
 cur=newDoc('QT');
 fillProfile();renderHeadName();renderAttach();fillForm();
 syncPending();
-if(!db.profile.name){showTab('profile');toast('เริ่มจากกรอกข้อมูลของคุณก่อน ระบบจะจำไว้ให้');}
+showStart(true);
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit);
 })();
 </script>
